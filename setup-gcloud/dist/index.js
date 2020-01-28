@@ -8284,7 +8284,7 @@ const core = __importStar(__webpack_require__(470));
 const exec = __importStar(__webpack_require__(986));
 const toolCache = __importStar(__webpack_require__(533));
 const js_base64_1 = __webpack_require__(867);
-const fs_1 = __webpack_require__(747);
+const fs = __importStar(__webpack_require__(747));
 const tmp = __importStar(__webpack_require__(150));
 const os = __importStar(__webpack_require__(87));
 const format_url_1 = __webpack_require__(8);
@@ -8298,18 +8298,20 @@ function run() {
             if (!version) {
                 throw new Error('Missing required parameter: `version`');
             }
-            const serviceAccountEmail = core.getInput('service_account_email') || '';
-            const serviceAccountKey = core.getInput('service_account_key');
-            if (!serviceAccountKey) {
-                throw new Error('Missing required input: `service_account_key`');
-            }
             // install the gcloud is not already present
             const toolPath = toolCache.find('gcloud', version);
             if (!toolPath) {
-                installGcloudSDK(version);
+                yield installGcloudSDK(version);
+            }
+            const serviceAccountEmail = core.getInput('service_account_email') || '';
+            const serviceAccountKey = core.getInput('service_account_key');
+            // if a service account key isn't provided, log an un-authenticated notice
+            if (!serviceAccountKey) {
+                console.log('gcloud SDK installed without authentication.');
+                return;
             }
             // write the service account key to a temporary file
-            const tmpKeyFilePath = yield new Promise((resolve, reject) => {
+            let tmpKeyFilePath = yield new Promise((resolve, reject) => {
                 tmp.file((err, path, fd, cleanupCallback) => {
                     if (err) {
                         reject(err);
@@ -8317,9 +8319,15 @@ function run() {
                     resolve(path);
                 });
             });
-            yield fs_1.promises.writeFile(tmpKeyFilePath, js_base64_1.Base64.decode(serviceAccountKey));
+            const serviceAccountFileName = core.getInput('service_account_file_name');
+            if (serviceAccountFileName) {
+                tmpKeyFilePath = `${serviceAccountFileName}`;
+            }
+            yield fs.promises.writeFile(tmpKeyFilePath, js_base64_1.Base64.decode(serviceAccountKey));
             // authenticate as the specified service account
             yield exec.exec(`gcloud auth activate-service-account ${serviceAccountEmail} --key-file=${tmpKeyFilePath}`);
+            //export the file path into GOOGLE_APPLICATION_CREDENTIALS
+            core.exportVariable('GOOGLE_APPLICATION_CREDENTIALS', tmpKeyFilePath);
         }
         catch (error) {
             core.setFailed(error.message);
@@ -9413,6 +9421,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const toolCache = __importStar(__webpack_require__(533));
 const core = __importStar(__webpack_require__(470));
 const path_1 = __importDefault(__webpack_require__(622));
+exports.GCLOUD_METRICS_ENV_VAR = 'CLOUDSDK_METRICS_ENVIRONMENT';
+exports.GCLOUD_METRICS_LABEL = 'github-actions-setup-gcloud';
 /**
  * Installs the gcloud SDK into the actions environment.
  *
@@ -9426,6 +9436,7 @@ function installGcloudSDK(version, gcloudExtPath) {
         let toolPath = yield toolCache.cacheDir(toolRoot, 'gcloud', version);
         toolPath = path_1.default.join(toolPath, 'bin');
         core.addPath(toolPath);
+        core.exportVariable(exports.GCLOUD_METRICS_ENV_VAR, exports.GCLOUD_METRICS_LABEL);
         return toolPath;
     });
 }

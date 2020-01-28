@@ -18,7 +18,7 @@ import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as toolCache from '@actions/tool-cache';
 import {Base64} from 'js-base64';
-import {promises as fs} from 'fs';
+import * as fs from 'fs';
 import path from 'path';
 import * as tmp from 'tmp';
 import * as os from 'os';
@@ -35,21 +35,23 @@ async function run() {
       throw new Error('Missing required parameter: `version`');
     }
 
-    const serviceAccountEmail = core.getInput('service_account_email') || '';
-
-    const serviceAccountKey = core.getInput('service_account_key');
-    if (!serviceAccountKey) {
-      throw new Error('Missing required input: `service_account_key`');
-    }
-
     // install the gcloud is not already present
     const toolPath = toolCache.find('gcloud', version);
     if (!toolPath) {
-      installGcloudSDK(version);
+      await installGcloudSDK(version);
+    }
+
+    const serviceAccountEmail = core.getInput('service_account_email') || '';
+    const serviceAccountKey = core.getInput('service_account_key');
+
+    // if a service account key isn't provided, log an un-authenticated notice
+    if (!serviceAccountKey) {
+      console.log('gcloud SDK installed without authentication.');
+      return;
     }
 
     // write the service account key to a temporary file
-    const tmpKeyFilePath = await new Promise<string>((resolve, reject) => {
+    let tmpKeyFilePath = await new Promise<string>((resolve, reject) => {
       tmp.file((err, path, fd, cleanupCallback) => {
         if (err) {
           reject(err);
@@ -57,12 +59,25 @@ async function run() {
         resolve(path);
       });
     });
-    await fs.writeFile(tmpKeyFilePath, Base64.decode(serviceAccountKey));
+
+    const serviceAccountFileName = core.getInput('service_account_file_name');
+
+    if (serviceAccountFileName) {
+      tmpKeyFilePath = `${serviceAccountFileName}`;
+    }
+
+    await fs.promises.writeFile(
+      tmpKeyFilePath,
+      Base64.decode(serviceAccountKey),
+    );
 
     // authenticate as the specified service account
     await exec.exec(
       `gcloud auth activate-service-account ${serviceAccountEmail} --key-file=${tmpKeyFilePath}`,
     );
+
+    //export the file path into GOOGLE_APPLICATION_CREDENTIALS
+    core.exportVariable('GOOGLE_APPLICATION_CREDENTIALS', tmpKeyFilePath);
   } catch (error) {
     core.setFailed(error.message);
   }
