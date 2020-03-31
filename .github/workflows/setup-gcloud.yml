@@ -1,15 +1,24 @@
-name: Main workflow
-on: [push, pull_request]
+name: setup-gcloud Unit
+
+on:
+  push:
+    paths:
+    - 'setup-gcloud/**'
+  pull_request:
+    paths:
+    - 'setup-gcloud/**'
+
 jobs:
   run:
     name: setup-gcloud
     runs-on: ${{ matrix.operating-system }}
     strategy:
+      fail-fast: false
       matrix:
         operating-system: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-    - uses: actions/checkout@master
-    
+    - uses: actions/checkout@v2
+
     - name: Set Node.js 10.x
       uses: actions/setup-node@master
       with:
@@ -21,8 +30,8 @@ jobs:
 
     - name: Lint
       working-directory: ./setup-gcloud
-      run: npm run format-check
+      run: npm run lint
 
-    - name: npm test
+    - name: Unit tests
       working-directory: ./setup-gcloud
       run: npm test
