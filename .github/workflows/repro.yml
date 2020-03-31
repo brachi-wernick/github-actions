@@ -30,4 +30,4 @@ jobs:
         java-version: 1.8
 
     - name: Build with Maven
-      run: mvn clean install --file /example-workflows/test-java/pom.xml
+      run: mvn clean install --file example-workflows/test-java/pom.xml
